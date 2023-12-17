@@ -58,6 +58,7 @@ import { FsCleanupWorker } from './workers/fs-cleanup-worker.js';
 import { TransactionFetcher } from './workers/transaction-fetcher.js';
 import { TransactionImporter } from './workers/transaction-importer.js';
 import { TransactionRepairWorker } from './workers/transaction-repair-worker.js';
+import { DataPrefetcher } from './workers/prefetch-data.js';
 
 process.on('uncaughtException', (error) => {
   metrics.uncaughtExceptionCounter.inc();
@@ -232,6 +233,23 @@ const ans104Unbundler = new Ans104Unbundler({
   dataItemIndexFilterString: config.ANS104_INDEX_FILTER_STRING,
   workerCount: config.ANS104_UNBUNDLE_WORKERS,
 });
+
+const dataPrefetcher = new DataPrefetcher({
+  log,
+  contiguousDataSource,
+});
+
+eventEmitter.on(
+  events.TX_INDEXED,
+  async (tx: MatchableItem & { data_size?: string }) => {
+    // download the tx
+    // await contiguousDataSource.getData(tx.id)
+    const size = +(tx?.data_size ?? 0);
+    if (!isNaN(size) && size !== 0) {
+      await dataPrefetcher.queuePrefetchData(tx);
+    }
+  },
+);
 
 eventEmitter.on(
   events.ANS104_BUNDLE_INDEXED,
