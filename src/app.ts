@@ -26,10 +26,14 @@ import { dataRouter } from './routes/data/index.js';
 import { apolloServer } from './routes/graphql/index.js';
 import { openApiRouter } from './routes/openapi.js';
 import * as system from './system.js';
+import { createCron } from './utils/cron.js';
+import { runHealthCheck } from './utils/healthcheck.js';
 
 system.arweaveClient.refreshPeers();
 
 system.headerFsCacheCleanupWorker?.start();
+
+createCron('Healthchecks', '0 */1 * * * *', runHealthCheck);
 
 // Allow starting without writers to support SQLite replication
 if (config.START_WRITERS) {

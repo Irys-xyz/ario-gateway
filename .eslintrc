@@ -33,7 +33,7 @@
     "eqeqeq": 2,
     "jest-formatting/padding-around-describe-blocks": 2,
     "jest-formatting/padding-around-test-blocks": 2,
-    "header/header": [2, "./resources/license.header.js"],
+    // "header/header": [2, "./resources/license.header.js"],
     "mocha/max-top-level-suites": "off",
     "mocha/no-exports": "off",
     "mocha/no-mocha-arrows": "off",

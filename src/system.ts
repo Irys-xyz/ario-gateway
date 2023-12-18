@@ -17,6 +17,7 @@
  */
 import { default as Arweave } from 'arweave';
 import EventEmitter from 'node:events';
+import { promises } from 'node:fs';
 
 import { ArweaveCompositeClient } from './arweave/composite-client.js';
 import * as config from './config.js';
@@ -28,8 +29,8 @@ import { TxChunksDataSource } from './data/tx-chunks-data-source.js';
 import { StandaloneSqliteDatabase } from './database/standalone-sqlite.js';
 import * as events from './events.js';
 import { MatchTags } from './filters.js';
-import { UniformFailureSimulator } from './lib/chaos.js';
 import { makeBlockStore, makeTxStore } from './init/header-stores.js';
+import { UniformFailureSimulator } from './lib/chaos.js';
 import { currentUnixTimestamp } from './lib/time.js';
 import log from './log.js';
 import * as metrics from './metrics.js';
@@ -55,10 +56,10 @@ import { BlockImporter } from './workers/block-importer.js';
 import { BundleRepairWorker } from './workers/bundle-repair-worker.js';
 import { DataItemIndexer } from './workers/data-item-indexer.js';
 import { FsCleanupWorker } from './workers/fs-cleanup-worker.js';
+import { DataPrefetcher } from './workers/prefetch-data.js';
 import { TransactionFetcher } from './workers/transaction-fetcher.js';
 import { TransactionImporter } from './workers/transaction-importer.js';
 import { TransactionRepairWorker } from './workers/transaction-repair-worker.js';
-import { DataPrefetcher } from './workers/prefetch-data.js';
 
 process.on('uncaughtException', (error) => {
   metrics.uncaughtExceptionCounter.inc();
@@ -126,6 +127,35 @@ export const headerFsCacheCleanupWorker = config.ENABLE_FS_HEADER_CACHE_CLEANUP
       },
     })
   : undefined;
+
+// export const contiguousDataCacheDataCleanupWorker = new FsCleanupWorker({
+//   log,
+//   basePath: 'data/contiguous/data',
+//   shouldDelete: async (path) => {
+//     // stat it
+//     const stat = await promises.stat(path);
+//     if (stat.birthtimeMs) {
+//     }
+//   },
+// });
+
+export const contiguousDataCacheTmpCleanupWorker = new FsCleanupWorker({
+  log,
+  basePath: 'data/contiguous/tmp',
+  shouldDelete: async (path) => {
+    const stat = await promises.stat(path);
+    return Date.now() - stat.mtimeMs > config.MAX_TMP_FS_AGE;
+  },
+});
+
+export const generalTmpCleanupWorker = new FsCleanupWorker({
+  log,
+  basePath: 'data/tmp',
+  shouldDelete: async (path) => {
+    const stat = await promises.stat(path);
+    return Date.now() - stat.mtimeMs > config.MAX_TMP_FS_AGE;
+  },
+});
 
 const ans104TxMatcher = new MatchTags([
   { name: 'Bundle-Format', value: 'binary' },
