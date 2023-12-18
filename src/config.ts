@@ -18,7 +18,9 @@
 import dotenv from 'dotenv';
 import { canonicalize } from 'json-canonicalize';
 import crypto from 'node:crypto';
+import { hostname } from 'node:os';
 
+import { ONE_DAY } from './constants.js';
 import { createFilter } from './filters.js';
 import * as env from './lib/env.js';
 import log from './log.js';
@@ -83,7 +85,7 @@ export const CONTRACT_ID = env.varOrDefault(
   'CONTRACT_ID',
   'bLAgYxAdX2Ry-nt6aH2ixgvJXbpsEYm28NgJgyqfs-U',
 );
-export const CHAIN_CACHE_TYPE = env.varOrDefault('CHAIN_CACHE_TYPE', 'lmdb');
+export const CHAIN_CACHE_TYPE = env.varOrDefault('CHAIN_CACHE_TYPE', 'fs');
 export const REDIS_CACHE_URL = env.varOrDefault(
   'REDIS_CACHE_URL',
   'redis://localhost:6379',
@@ -94,3 +96,16 @@ export const REDIS_CACHE_TTL_SECONDS = +env.varOrDefault(
 );
 export const ENABLE_FS_HEADER_CACHE_CLEANUP =
   env.varOrDefault('ENABLE_FS_HEADER_CACHE_CLEANUP', 'false') === 'true';
+
+export const WEBHOOK_URL = env.varOrUndefined('WEBHOOK_URL');
+export const PING_ID = env.varOrUndefined('PING_ID');
+export const PDUTY_ROUTING_KEY = env.varOrUndefined('PDUTY_ROUTING_KEY');
+export const NODE_NAME = env.varOrDefault('NODE_NAME', hostname());
+export const FS_FREE_SPACE_MIN = +env.varOrDefault(
+  'FS_FREE_SPACE_MIN',
+  '200000000000', // 200GB
+);
+export const HIGH_LOAD_CRITICAL =
+  env.varOrDefault('HIGH_LOAD_CRITICAL', 'true') === 'true';
+
+export const MAX_TMP_FS_AGE = +env.varOrDefault('MAX_TMP_FS_AGE', `${ONE_DAY}`);

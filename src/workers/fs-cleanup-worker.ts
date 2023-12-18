@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-import fs from 'node:fs';
+import fs, { promises } from 'node:fs';
 import path from 'node:path';
 import * as winston from 'winston';
 
@@ -111,37 +111,72 @@ export class FsCleanupWorker {
     this.lastPath = batch[batch.length - 1];
   }
 
-  async getBatch(basePath: string, lastPath: string | null): Promise<string[]> {
+  public async getBatch(
+    basePath: string,
+    lastPath: string | null,
+  ): Promise<string[]> {
     const batch: string[] = [];
     let totalFilesProcessed = 0;
 
-    const walk = async (dir: string) => {
-      const files = await fs.promises.readdir(dir, { withFileTypes: true });
-      files.sort((a, b) => a.name.localeCompare(b.name));
-
-      for (const file of files) {
-        if (totalFilesProcessed >= this.batchSize) break;
-
-        const fullPath = path.join(dir, file.name);
-        if (
-          lastPath !== null &&
-          (lastPath.startsWith(fullPath) || fullPath >= lastPath) &&
-          file.isDirectory()
-        ) {
-          await walk(fullPath);
-        } else {
-          if (lastPath === null || fullPath > lastPath) {
-            if (await this.shouldDelete(fullPath)) {
-              batch.push(fullPath);
-              totalFilesProcessed++;
-            }
-          }
-        }
+    for await (const filePath of walk(basePath)) {
+      if (totalFilesProcessed >= this.batchSize) break;
+      const fullPath = path.resolve(filePath);
+      // if (
+      //   lastPath !== null &&
+      //   (lastPath.startsWith(fullPath) || fullPath >= lastPath) &&
+      //   file.isDirectory()
+      // ) {
+      //   await walk(fullPath);
+      // } else {
+      //   if (lastPath === null || fullPath > lastPath) {
+      if (
+        (lastPath === null || fullPath > lastPath) &&
+        (await this.shouldDelete(fullPath))
+      ) {
+        batch.push(fullPath);
+        totalFilesProcessed++;
       }
-    };
+      //   }
+      // }
+    }
+    // const walk = async (dir: string) => {
+    //   const files = await fs.promises.readdir(dir, { withFileTypes: true });
+    //   files.sort((a, b) => a.name.localeCompare(b.name));
 
-    await walk(basePath);
+    //   for (const file of files) {
+    //     if (totalFilesProcessed >= this.batchSize) break;
+
+    //     const fullPath = path.join(dir, file.name);
+    //     if (
+    //       lastPath !== null &&
+    //       (lastPath.startsWith(fullPath) || fullPath >= lastPath) &&
+    //       file.isDirectory()
+    //     ) {
+    //       await walk(fullPath);
+    //     } else {
+    //       if (lastPath === null || fullPath > lastPath) {
+    //         if (await this.shouldDelete(fullPath)) {
+    //           batch.push(fullPath);
+    //           totalFilesProcessed++;
+    //         }
+    //       }
+    //     }
+    //   }
+    // };
+
+    // await walk(basePath);
 
     return batch;
+  }
+}
+
+async function* walk(
+  dir: string,
+  recursive = true,
+): AsyncGenerator<string, void, any> {
+  for await (const d of await promises.opendir(dir)) {
+    const entry = path.join(dir, d.name);
+    if (recursive && d.isDirectory()) yield* await walk(entry);
+    else if (d.isFile()) yield entry;
   }
 }
