@@ -1,6 +1,6 @@
 import { CronJob } from 'cron';
 
-import logger from '../log';
+import logger from '../log.js';
 
 export function createCron(
   name: string,

@@ -1,8 +1,8 @@
 import { spawn } from 'child_process';
 import { cpus, freemem, loadavg, totalmem } from 'os';
 
-import { HIGH_LOAD_CRITICAL } from '../config';
-import sendWebhookMessage from './webhook';
+import { HIGH_LOAD_CRITICAL } from '../config.js';
+import sendWebhookMessage from './webhook.js';
 
 export async function checkResourceUtilisation(): Promise<void> {
   const loadAvg = loadavg();

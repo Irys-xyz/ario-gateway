@@ -1,9 +1,9 @@
 import checkDiskSpace from 'check-disk-space';
 
-import { FS_FREE_SPACE_MIN } from '../config';
-import logger from '../log';
-import { checkResourceUtilisation } from './resourceUtil';
-import sendWebhookMessage from './webhook';
+import { FS_FREE_SPACE_MIN } from '../config.js';
+import logger from '../log.js';
+import { checkResourceUtilisation } from './resourceUtil.js';
+import sendWebhookMessage from './webhook.js';
 
 export async function runHealthCheck(): Promise<void> {
   logger.info('Running health check');

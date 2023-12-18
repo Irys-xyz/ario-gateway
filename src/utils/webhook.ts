@@ -2,8 +2,13 @@
 import AsyncRetry from 'async-retry';
 import Axios from 'axios';
 
-import { NODE_NAME, PDUTY_ROUTING_KEY, PING_ID, WEBHOOK_URL } from '../config';
-import logger from '../log';
+import {
+  NODE_NAME,
+  PDUTY_ROUTING_KEY,
+  PING_ID,
+  WEBHOOK_URL,
+} from '../config.js';
+import logger from '../log.js';
 
 export default async function sendWebhookMessage({
   name,
