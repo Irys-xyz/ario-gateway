@@ -50,16 +50,21 @@ import {
   NormalizedDataItem,
   PartialJsonTransaction,
 } from './types.js';
+import { createCron } from './utils/cron.js';
 import { Ans104DataIndexer } from './workers/ans104-data-indexer.js';
 import { Ans104Unbundler } from './workers/ans104-unbundler.js';
 import { BlockImporter } from './workers/block-importer.js';
 import { BundleRepairWorker } from './workers/bundle-repair-worker.js';
 import { DataItemIndexer } from './workers/data-item-indexer.js';
 import { FsCleanupWorker } from './workers/fs-cleanup-worker.js';
-import { DataPrefetcher } from './workers/prefetch-data.js';
+import {
+  PrefetchJobBody,
+  PrefetchJobReturnBody,
+} from './workers/prefetch-data.js';
 import { TransactionFetcher } from './workers/transaction-fetcher.js';
 import { TransactionImporter } from './workers/transaction-importer.js';
 import { TransactionRepairWorker } from './workers/transaction-repair-worker.js';
+import { WorkerThreadQueue } from './workers/worker-thead.js';
 
 process.on('uncaughtException', (error) => {
   metrics.uncaughtExceptionCounter.inc();
@@ -264,19 +269,46 @@ const ans104Unbundler = new Ans104Unbundler({
   workerCount: config.ANS104_UNBUNDLE_WORKERS,
 });
 
-const dataPrefetcher = new DataPrefetcher({
+const dataPrefetcher = new WorkerThreadQueue<
+  PrefetchJobBody,
+  PrefetchJobReturnBody
+>({
   log,
-  contiguousDataSource,
+  workerPath: './prefetch-data.js', // relative to ./workers,
+  workerCount: 5,
+});
+
+const maxPendingPrefetchJobs = 200;
+
+createCron('Limit block imports', '*/10 * * * * *', async () => {
+  if (
+    dataPrefetcher.pendingJobs >= maxPendingPrefetchJobs &&
+    blockImporter.running
+  )
+    return await blockImporter
+      .stop()
+      .then((_) => void log.info('Pausing block import'));
+  if (!blockImporter.running)
+    return await blockImporter
+      .start()
+      .then((_) => void log.info('Resuming block import'));
 });
 
 eventEmitter.on(
   events.TX_INDEXED,
   async (tx: MatchableItem & { data_size?: string }) => {
-    // download the tx
-    // await contiguousDataSource.getData(tx.id)
+    // check if the tx has any data
     const size = +(tx?.data_size ?? 0);
     if (!isNaN(size) && size !== 0) {
-      await dataPrefetcher.queuePrefetchData(tx);
+      // queue a worker to download the tx
+      const response = await dataPrefetcher
+        .queueWork({ id: tx.id })
+        .catch((_) => undefined);
+      if (response)
+        // insert into index
+        await contiguousDataIndex.saveDataContentAttributes(
+          response as PrefetchJobReturnBody,
+        );
     }
   },
 );
