@@ -105,8 +105,9 @@ export class BlockImporter {
     if (height > this.startHeight) {
       // Retrieve expected previous block hash from the DB
       const previousHeight = height - 1;
-      const previousDbBlockHash =
-        await this.chainIndex.getBlockHashByHeight(previousHeight);
+      const previousDbBlockHash = await this.chainIndex.getBlockHashByHeight(
+        previousHeight,
+      );
 
       if (previousDbBlockHash === undefined) {
         // If a gap is found, rewind the index to the last known block
@@ -152,8 +153,9 @@ export class BlockImporter {
   }
 
   public async importBlock(height: number) {
-    const { block, txs, missingTxIds } =
-      await this.getBlockOrForkedBlock(height);
+    const { block, txs, missingTxIds } = await this.getBlockOrForkedBlock(
+      height,
+    );
 
     // Emit sucessful fetch events
     this.eventEmitter.emit(events.BLOCK_FETCHED, block);
@@ -243,6 +245,10 @@ export class BlockImporter {
         await wait(BLOCK_ERROR_RETRY_INTERVAL_MS);
       }
     }
+  }
+
+  get running() {
+    return this.shouldRun;
   }
 
   public async stop() {

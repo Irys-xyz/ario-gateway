@@ -1,66 +1,69 @@
-/* eslint-disable header/header */
-import { default as fastq } from 'fastq';
-import type { queueAsPromised } from 'fastq';
-import * as winston from 'winston';
+import { createHash } from 'crypto';
+import { pipeline } from 'stream/promises';
+import { isMainThread, parentPort } from 'worker_threads';
 
-import { ContiguousDataSource, MatchableItem } from '../types.js';
+import { GatewayDataSource } from '../data/gateway-data-source.js';
+import { currentUnixTimestamp } from '../lib/time.js';
+import logger from '../log.js';
+import { FsDataStore } from '../store/fs-data-store.js';
+import { WorkerMessage, wrapWorkerFn } from './worker-thead.js';
 
-const DEFAULT_WORKER_COUNT = 4;
+export type PrefetchJobBody = {
+  id: string;
+};
 
-export class DataPrefetcher {
-  // Dependencies
-  private log: winston.Logger;
-  private contiguousDataSource: ContiguousDataSource;
-  //   private indexWriter: DataItemIndexWriter;
+// seperate deps, as we can't load the DB.
+const dataStore = new FsDataStore({ log: logger, baseDir: 'data/contiguous' });
+const dataSource = new GatewayDataSource({
+  log: logger,
+  trustedGatewayUrl: 'https://arweave.net',
+});
 
-  // Data indexing queue
-  private queue: queueAsPromised<MatchableItem, void>;
+export async function prefetchTransaction(
+  job: PrefetchJobBody,
+): Promise<PrefetchJobReturnBody> {
+  const txId = job.id;
+  const log = logger.child({ worker: 'transaction-prefetch', txId: txId });
+  const then = performance.now();
+  log.verbose(`Prefetching ${txId}`);
 
-  constructor({
-    log,
-    // indexWriter,
-    contiguousDataSource,
-    workerCount = DEFAULT_WORKER_COUNT,
-  }: {
-    log: winston.Logger;
-    // indexWriter: DataItemIndexWriter;
-    contiguousDataSource: ContiguousDataSource;
-    workerCount?: number;
-  }) {
-    this.log = log.child({ class: 'DataPrefetcher' });
-    // this.indexWriter = indexWriter;
-    this.contiguousDataSource = contiguousDataSource;
-
-    this.queue = fastq.promise(this.prefetchData.bind(this), workerCount);
-  }
-
-  async queuePrefetchData(item: MatchableItem): Promise<void> {
-    const log = this.log.child({
-      method: 'queueDataItem',
-      id: item.id,
-    });
-    log.debug('Queueing item for prefetching...');
-    this.queue.push(item);
-    log.debug('Data item queued for prefetching.');
-  }
-
-  async prefetchData(item: MatchableItem): Promise<void> {
-    const log = this.log.child({
-      method: 'indexDataItem',
-      id: item.id,
-    });
-
-    try {
-      log.debug('Prefetching data item...');
-      const res = await this.contiguousDataSource.getData(item.id);
-      const stream = res.stream;
-      // you have to consume the stream so it actually caches the item fully.
-      for await (const _ of stream) {
-        true; // void it
-      }
-      log.debug('Data item prefetched.');
-    } catch (error) {
-      log.error('Failed to prefetch data item data:', error);
-    }
-  }
+  const data = await dataSource.getData(txId);
+  const hasher = createHash('sha256');
+  const cacheStream = await dataStore.createWriteStream();
+  const dataStream = data.stream;
+  data.stream.on('data', (chunk) => {
+    hasher.update(chunk);
+  });
+  data.stream.pause();
+  await pipeline(dataStream, cacheStream);
+  const hash = hasher.digest('base64url');
+  await dataStore.finalize(cacheStream, hash);
+  log.verbose(
+    `Prefetched ${txId} in ${((performance.now() - then) / 1000).toFixed(3)}s`,
+  );
+  return {
+    id: txId,
+    dataRoot: undefined,
+    hash,
+    dataSize: data.size,
+    contentType: data.sourceContentType,
+    cachedAt: currentUnixTimestamp(),
+  };
 }
+
+export type PrefetchJobReturnBody = {
+  id: string;
+  dataRoot?: string;
+  hash: string;
+  dataSize: number;
+  contentType?: string;
+  cachedAt?: number;
+};
+
+if (!isMainThread) {
+  parentPort?.on('message', (msg: WorkerMessage<PrefetchJobBody>) =>
+    wrapWorkerFn(prefetchTransaction, msg),
+  );
+}
+
+// export default prefetchTransaction;
